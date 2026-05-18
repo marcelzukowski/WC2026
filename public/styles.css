@@ -534,6 +534,15 @@ th {
   border-bottom: 1px solid var(--line);
 }
 
+.admin-user-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
 .profile-row {
   padding: 12px;
   display: grid;
@@ -568,6 +577,7 @@ th {
   .topbar { flex-direction: column; }
   .ranking-row { grid-template-columns: 42px 1fr; }
   .admin-result { grid-template-columns: 1fr; }
+  .admin-user-row { grid-template-columns: 1fr; }
   .bracket-tree {
     grid-template-columns: minmax(280px, 1fr);
   }

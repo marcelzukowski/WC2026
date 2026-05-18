@@ -68,7 +68,40 @@ async function init() {
 async function loadBootstrap() {
   const data = await api("/api/bootstrap");
   Object.assign(state, data, { error: "" });
+  if (state.user?.mustChangePassword) {
+    renderPasswordChange();
+    return;
+  }
   renderApp();
+}
+
+function renderPasswordChange() {
+  app.innerHTML = `
+    <main class="auth-shell">
+      <section class="auth-hero">
+        <h1>Nowe hasło</h1>
+        <p>Administrator ustawił hasło tymczasowe. Ustaw własne hasło, żeby przejść dalej.</p>
+      </section>
+      <section class="auth-panel">
+        <div class="auth-card">
+          <h2>Ustaw nowe hasło</h2>
+          <form id="password-change-form" class="grid">
+            <input name="password" placeholder="Nowe hasło" type="password" autocomplete="new-password" required>
+            <input name="passwordRepeat" placeholder="Powtórz nowe hasło" type="password" autocomplete="new-password" required>
+            <button class="primary full" type="submit">Zapisz nowe hasło</button>
+          </form>
+          <button class="ghost full" id="password-change-logout" style="margin-top:10px">Wyloguj</button>
+          <div id="password-change-error"></div>
+        </div>
+      </section>
+    </main>
+  `;
+  document.querySelector("#password-change-form").addEventListener("submit", submitPasswordChange);
+  document.querySelector("#password-change-logout").addEventListener("click", async () => {
+    await api("/api/logout", { method: "POST" });
+    state.user = null;
+    renderAuth();
+  });
 }
 
 function renderAuth(mode = "login") {
@@ -343,6 +376,10 @@ function renderAdmin() {
       </label>
     </section>
     <section class="panel" style="margin-top:18px">
+      <h3>Uczestnicy</h3>
+      <div class="match-list">${renderAdminUsers()}</div>
+    </section>
+    <section class="panel" style="margin-top:18px">
       <h3>Rozstrzyganie tabel grupowych</h3>
       <div class="grid three">
         ${groups.map((group) => renderAdminGroupTieBreak(group)).join("")}
@@ -390,6 +427,23 @@ function renderAdmin() {
       `).join("")}
     </section>
   `;
+}
+
+function renderAdminUsers() {
+  if (!state.users.length) return empty("Brak zarejestrowanych uczestników.");
+  return state.users.map((user) => `
+    <div class="admin-user-row">
+      <div>
+        <strong>${escapeHtml(user.username)}</strong>
+        <div class="muted">${user.mustChangePassword ? "musi zmienić hasło przy logowaniu" : "aktywne konto"}</div>
+      </div>
+      <form class="form-row" data-reset-password="${user.id}">
+        <input name="password" type="text" placeholder="Hasło tymczasowe" required>
+        <button class="primary">Ustaw tymczasowe</button>
+      </form>
+      <button class="danger" data-delete-user="${user.id}" type="button">Usuń</button>
+    </div>
+  `).join("");
 }
 
 function renderAdminGroupTieBreak(group) {
@@ -682,6 +736,14 @@ function bindCommon() {
 
   document.querySelector("#admin-prediction-form")?.addEventListener("submit", submitAdminPrediction);
 
+  document.querySelectorAll("[data-reset-password]").forEach((form) => {
+    form.addEventListener("submit", submitResetPassword);
+  });
+
+  document.querySelectorAll("[data-delete-user]").forEach((button) => {
+    button.addEventListener("click", () => deleteUser(button.dataset.deleteUser));
+  });
+
   document.querySelectorAll("[data-group-tiebreak]").forEach((form) => {
     form.addEventListener("submit", submitGroupTieBreak);
   });
@@ -733,6 +795,27 @@ async function submitPrediction(event) {
   }
 }
 
+async function submitPasswordChange(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const password = String(form.get("password") || "");
+  const passwordRepeat = String(form.get("passwordRepeat") || "");
+  const errorBox = document.querySelector("#password-change-error");
+  if (password !== passwordRepeat) {
+    errorBox.innerHTML = `<div class="error">Hasła nie są takie same.</div>`;
+    return;
+  }
+  try {
+    await api("/api/change-password", {
+      method: "POST",
+      body: JSON.stringify({ password })
+    });
+    await loadBootstrap();
+  } catch (error) {
+    errorBox.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
+  }
+}
+
 async function submitResult(event) {
   event.preventDefault();
   const form = event.currentTarget;
@@ -760,6 +843,39 @@ async function submitAdminPrediction(event) {
     state.message = "Typ użytkownika zapisany.";
     await loadBootstrap();
     state.view = "admin";
+    renderApp();
+  } catch (error) {
+    showError(error);
+  }
+}
+
+async function submitResetPassword(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const password = new FormData(form).get("password");
+  try {
+    const data = await api("/api/admin/users/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ userId: form.dataset.resetPassword, password })
+    });
+    state.users = data.users;
+    state.message = "Ustawiono hasło tymczasowe.";
+    renderApp();
+  } catch (error) {
+    showError(error);
+  }
+}
+
+async function deleteUser(userId) {
+  if (!confirm("Usunąć tego użytkownika razem z jego typami?")) return;
+  try {
+    const data = await api("/api/admin/users/delete", {
+      method: "POST",
+      body: JSON.stringify({ userId })
+    });
+    state.users = data.users;
+    state.ranking = data.ranking;
+    state.message = "Użytkownik został usunięty.";
     renderApp();
   } catch (error) {
     showError(error);

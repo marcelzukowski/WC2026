@@ -59,6 +59,32 @@ function writeDb(db) {
 
 function syncSeedMatches(db) {
   let changed = false;
+  if (!Array.isArray(db.users)) {
+    db.users = [];
+    changed = true;
+  }
+  if (!Array.isArray(db.sessions)) {
+    db.sessions = [];
+    changed = true;
+  }
+  if (!Array.isArray(db.predictions)) {
+    db.predictions = [];
+    changed = true;
+  }
+  if (!Array.isArray(db.results)) {
+    db.results = [];
+    changed = true;
+  }
+  for (const user of db.users) {
+    if (typeof user.mustChangePassword !== "boolean") {
+      user.mustChangePassword = false;
+      changed = true;
+    }
+  }
+  if (!db.settings) {
+    db.settings = { hidePredictionsUntilKickoff: true };
+    changed = true;
+  }
   if (!db.groupTieBreaks) {
     db.groupTieBreaks = {};
     changed = true;
@@ -90,8 +116,16 @@ function createUserRecord(username, password, role = "user") {
     role,
     salt,
     passwordHash: hash,
+    mustChangePassword: false,
     createdAt: nowIso()
   };
+}
+
+function setUserPassword(user, password, mustChangePassword = false) {
+  user.salt = crypto.randomBytes(16).toString("hex");
+  user.passwordHash = crypto.scryptSync(password, user.salt, 64).toString("hex");
+  user.mustChangePassword = mustChangePassword;
+  user.passwordUpdatedAt = nowIso();
 }
 
 function verifyPassword(user, password) {
@@ -142,7 +176,7 @@ function getSessionUser(req, db) {
 }
 
 function publicUser(user) {
-  return { id: user.id, username: user.username, role: user.role, createdAt: user.createdAt };
+  return { id: user.id, username: user.username, role: user.role, createdAt: user.createdAt, mustChangePassword: Boolean(user.mustChangePassword) };
 }
 
 function isStarted(match) {
@@ -497,6 +531,15 @@ async function handleApi(req, res, pathname) {
 
     if (!user) return sendJson(res, 401, { error: "Musisz się zalogować." });
 
+    if (req.method === "POST" && pathname === "/api/change-password") {
+      const body = await readBody(req);
+      const password = String(body.password || "");
+      if (password.length < 4) return sendJson(res, 400, { error: "Nowe hasło musi mieć co najmniej 4 znaki." });
+      setUserPassword(user, password, false);
+      writeDb(db);
+      return sendJson(res, 200, { user: publicUser(user) });
+    }
+
     if (req.method === "GET" && pathname === "/api/bootstrap") {
       const groupStandings = buildGroupStandings(db);
       const resolvedMatches = buildResolvedMatches(db, groupStandings);
@@ -554,6 +597,31 @@ async function handleApi(req, res, pathname) {
       else db.predictions.push({ userId: targetUser.id, matchId: match.id, ...normalized, createdAt: nowIso(), updatedByAdmin: user.id });
       writeDb(db);
       return sendJson(res, 200, { match: decorateMatch(db, match, user), ranking: buildRanking(db) });
+    }
+
+    if (req.method === "POST" && pathname === "/api/admin/users/reset-password") {
+      if (user.role !== "admin") return sendJson(res, 403, { error: "Brak uprawnień administratora." });
+      const body = await readBody(req);
+      const targetUser = db.users.find((item) => item.id === String(body.userId) && item.role !== "admin");
+      const password = String(body.password || "");
+      if (!targetUser) return sendJson(res, 404, { error: "Nie znaleziono uczestnika." });
+      if (password.length < 4) return sendJson(res, 400, { error: "Hasło tymczasowe musi mieć co najmniej 4 znaki." });
+      setUserPassword(targetUser, password, true);
+      db.sessions = db.sessions.filter((session) => session.userId !== targetUser.id);
+      writeDb(db);
+      return sendJson(res, 200, { users: db.users.filter((item) => item.role !== "admin").map(publicUser) });
+    }
+
+    if (req.method === "POST" && pathname === "/api/admin/users/delete") {
+      if (user.role !== "admin") return sendJson(res, 403, { error: "Brak uprawnień administratora." });
+      const body = await readBody(req);
+      const targetUser = db.users.find((item) => item.id === String(body.userId) && item.role !== "admin");
+      if (!targetUser) return sendJson(res, 404, { error: "Nie znaleziono uczestnika." });
+      db.users = db.users.filter((item) => item.id !== targetUser.id);
+      db.sessions = db.sessions.filter((session) => session.userId !== targetUser.id);
+      db.predictions = db.predictions.filter((prediction) => prediction.userId !== targetUser.id);
+      writeDb(db);
+      return sendJson(res, 200, { users: db.users.filter((item) => item.role !== "admin").map(publicUser), ranking: buildRanking(db) });
     }
 
     if (req.method === "POST" && pathname === "/api/admin/group-tiebreaks") {
