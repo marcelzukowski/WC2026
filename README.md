@@ -22,13 +22,10 @@ Aplikacja działa pod adresem:
 http://localhost:3000
 ```
 
-Domyślne konta testowe:
+Domyślne konto administratora:
 
 ```text
 admin / admin123
-ania / test123
-bartek / test123
-celina / test123
 ```
 
 Hasło administratora można ustawić zmiennymi środowiskowymi przed pierwszym startem:

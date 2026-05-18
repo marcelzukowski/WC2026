@@ -14,7 +14,8 @@ const state = {
   sortRanking: "place",
   message: "",
   error: "",
-  profile: null
+  profile: null,
+  activeMatchId: null
 };
 
 const groups = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"];
@@ -24,6 +25,16 @@ function plDate(iso) {
   return new Intl.DateTimeFormat("pl-PL", {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Europe/Warsaw"
+  }).format(new Date(iso));
+}
+
+function shortDate(iso) {
+  return new Intl.DateTimeFormat("pl-PL", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
     timeZone: "Europe/Warsaw"
   }).format(new Date(iso));
 }
@@ -70,7 +81,7 @@ function renderAuth(mode = "login") {
       <section class="auth-panel">
         <div class="auth-card">
           <h2>${mode === "login" ? "Logowanie" : "Rejestracja"}</h2>
-          <p class="muted">${mode === "login" ? "Konto demo: ania / test123. Administrator: admin / admin123." : "Rejestracja jest otwarta dla wszystkich."}</p>
+          <p class="muted">${mode === "login" ? "Zaloguj się na swoje konto albo przejdź do rejestracji." : "Rejestracja jest otwarta dla wszystkich."}</p>
           <form id="auth-form" class="grid">
             <input name="username" placeholder="Nazwa użytkownika" autocomplete="username" required>
             <input name="password" placeholder="Hasło" type="password" autocomplete="${mode === "login" ? "current-password" : "new-password"}" required>
@@ -228,16 +239,57 @@ function renderGroupTable(group) {
 }
 
 function renderKnockout() {
+  const left = [
+    ["1/16 finału", [73, 74, 75, 76, 77, 78, 79, 80]],
+    ["1/8 finału", [89, 90, 91, 92]],
+    ["Ćwierćfinał", [97, 99]],
+    ["Półfinał", [101]]
+  ];
+  const right = [
+    ["Półfinał", [102]],
+    ["Ćwierćfinał", [98, 100]],
+    ["1/8 finału", [93, 94, 95, 96]],
+    ["1/16 finału", [81, 82, 83, 84, 85, 86, 87, 88]]
+  ];
   return `
-    <div class="bracket">
-      ${knockoutRounds.map((round) => `
-        <section class="bracket-column">
-          <h3>${round}</h3>
-          ${state.matches.filter((match) => match.round === round).sort(byKickoff).map(renderMatchCard).join("")}
-        </section>
-      `).join("")}
+    <div class="bracket-note">
+      Typowanie meczu pucharowego włącza się automatycznie, gdy znane są obie drużyny i mecz jeszcze się nie rozpoczął.
     </div>
+    <div class="bracket bracket-tree">
+      <div class="bracket-side bracket-side-left">
+        ${left.map(([title, ids]) => renderBracketColumn(title, ids)).join("")}
+      </div>
+      <section class="bracket-center">
+        <div class="trophy-card">
+          <div class="trophy">1</div>
+          <h3>Mecz o 1. miejsce</h3>
+          ${renderCenterMatch(104)}
+        </div>
+        <div class="third-place-card">
+          <h3>Mecz o 3. miejsce</h3>
+          ${renderCenterMatch(103)}
+        </div>
+      </section>
+      <div class="bracket-side bracket-side-right">
+        ${right.map(([title, ids]) => renderBracketColumn(title, ids)).join("")}
+      </div>
+    </div>
+    ${renderMatchModal()}
   `;
+}
+
+function renderBracketColumn(title, ids) {
+  return `
+    <section class="bracket-column">
+      <h3>${title}</h3>
+      ${ids.map((id) => state.matches.find((match) => match.id === id)).filter(Boolean).map(renderBracketMatchCard).join("")}
+    </section>
+  `;
+}
+
+function renderCenterMatch(id) {
+  const match = state.matches.find((item) => item.id === id);
+  return match ? renderBracketMatchCard(match) : empty("Brak meczu.");
 }
 
 function renderRanking() {
@@ -389,11 +441,46 @@ function renderThirdPlaceSlotForms() {
   }).join("");
 }
 
-function renderMatchCard(match) {
-  const canPredict = state.user.role !== "admin" && !match.locked && !match.prediction;
-  const locked = match.locked || state.user.role === "admin";
+function renderBracketMatchCard(match) {
+  const teamsKnown = match.stage === "group" || (match.homeResolved && match.awayResolved);
+  const status = match.result ? formatScore(match.result) : (!teamsKnown ? "Czeka" : (match.prediction ? "Twój typ" : "Typuj"));
+  const statusClass = match.result ? "gold" : (!teamsKnown ? "locked" : "");
   return `
-    <article class="match-card">
+    <button class="bracket-match ${!teamsKnown ? "pending" : ""}" data-open-match="${match.id}" type="button">
+      <span class="bracket-teams">
+        <span>${teamLabel(match, "home")}</span>
+        <span>${teamLabel(match, "away")}</span>
+      </span>
+      <span class="bracket-meta">#${match.matchNo} · ${shortDate(match.kickoff)}</span>
+      <span class="badge ${statusClass}">${status}</span>
+    </button>
+  `;
+}
+
+function renderMatchModal() {
+  if (!state.activeMatchId) return "";
+  const match = state.matches.find((item) => item.id === state.activeMatchId);
+  if (!match) return "";
+  return `
+    <div class="modal-backdrop" data-close-modal>
+      <section class="modal" role="dialog" aria-modal="true" aria-label="Mecz">
+        <button class="modal-close" type="button" data-close-modal>×</button>
+        ${renderMatchCard(match, { forceDetails: true })}
+      </section>
+    </div>
+  `;
+}
+
+function renderMatchCard(match, options = {}) {
+  const teamsKnown = match.stage === "group" || (match.homeResolved && match.awayResolved);
+  const canPredict = state.user.role !== "admin" && teamsKnown && !match.locked && !match.prediction;
+  const isAdmin = state.user.role === "admin";
+  const locked = match.locked || state.user.role === "admin";
+  const badgeText = !teamsKnown ? "Czeka na drużyny" : (isAdmin ? "Podgląd admina" : (match.locked ? "Zablokowany" : "Do typowania"));
+  const badgeClass = match.locked || !teamsKnown || isAdmin ? "locked" : "";
+  const detailsClass = options.forceDetails ? " match-card-details" : "";
+  return `
+    <article class="match-card${detailsClass}">
       <div class="match-head">
         <div>
           <div class="teams">
@@ -402,12 +489,14 @@ function renderMatchCard(match) {
           </div>
           <div class="muted">#${match.matchNo} · ${plDate(match.kickoff)} · ${escapeHtml(match.venue)}</div>
         </div>
-        <span class="badge ${match.locked ? "locked" : ""}">${match.locked ? "Zablokowany" : "Do typowania"}</span>
+        <span class="badge ${badgeClass}">${badgeText}</span>
       </div>
+      ${!teamsKnown ? `<div class="notice">Typowanie ruszy, gdy obie drużyny zostaną podstawione do tego meczu.</div>` : ""}
+      ${isAdmin && teamsKnown ? `<div class="notice">Administrator nie bierze udziału w typowaniu. Typy użytkowników można awaryjnie poprawić w panelu admina.</div>` : ""}
       ${match.prediction ? `<div class="notice">Twój typ: ${formatScore(match.prediction)}${formatAdvance(match, match.prediction)} · Punkty: <strong>${match.points}</strong></div>` : ""}
       ${match.result ? `<div class="success">Wynik: ${formatScore(match.result)}${formatAdvance(match, match.result)}</div>` : ""}
       ${match.stats ? renderStats(match) : ""}
-      ${canPredict ? predictionForm(match) : (!match.prediction && !locked ? "" : "")}
+      ${canPredict ? predictionForm(match) : ""}
     </article>
   `;
 }
@@ -560,6 +649,22 @@ function bindCommon() {
     button.addEventListener("click", () => loadProfile(button.dataset.profile));
   });
 
+  document.querySelectorAll("[data-open-match]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeMatchId = Number(button.dataset.openMatch);
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll("[data-close-modal]").forEach((element) => {
+    element.addEventListener("click", (event) => {
+      if (event.target === element || element.classList.contains("modal-close")) {
+        state.activeMatchId = null;
+        renderApp();
+      }
+    });
+  });
+
   document.querySelector("#close-profile")?.addEventListener("click", () => {
     state.profile = null;
     renderApp();
@@ -618,11 +723,12 @@ async function submitPrediction(event) {
   if (select) select.disabled = false;
   const body = Object.fromEntries(new FormData(form));
   body.matchId = Number(form.dataset.prediction);
-  try {
-    await api("/api/predictions", { method: "POST", body: JSON.stringify(body) });
-    state.message = "Typ zapisany.";
-    await loadBootstrap();
-  } catch (error) {
+    try {
+      await api("/api/predictions", { method: "POST", body: JSON.stringify(body) });
+      state.message = "Typ zapisany.";
+      state.activeMatchId = null;
+      await loadBootstrap();
+    } catch (error) {
     showError(error);
   }
 }

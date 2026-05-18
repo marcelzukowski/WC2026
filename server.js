@@ -30,21 +30,12 @@ function ensureDb() {
   const adminUsername = process.env.ADMIN_USERNAME || "admin";
   const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
   const admin = createUserRecord(adminUsername, adminPassword, "admin");
-  const demo = [
-    createUserRecord("ania", "test123", "user"),
-    createUserRecord("bartek", "test123", "user"),
-    createUserRecord("celina", "test123", "user")
-  ];
 
   const db = {
-    users: [admin, ...demo],
+    users: [admin],
     sessions: [],
     matches,
-    predictions: [
-      { userId: demo[0].id, matchId: 1, homeGoals: 2, awayGoals: 0, advancingTeam: null, createdAt: nowIso() },
-      { userId: demo[1].id, matchId: 1, homeGoals: 1, awayGoals: 1, advancingTeam: null, createdAt: nowIso() },
-      { userId: demo[2].id, matchId: 1, homeGoals: 3, awayGoals: 1, advancingTeam: null, createdAt: nowIso() }
-    ],
+    predictions: [],
     results: [],
     groupTieBreaks: {},
     knockoutSlotOverrides: {},
@@ -607,10 +598,10 @@ async function handleApi(req, res, pathname) {
         .filter((item) => item.userId === profileUser.id)
         .map((prediction) => {
           const match = resolvedMatches.find((item) => item.id === prediction.matchId);
-          if (db.settings.hidePredictionsUntilKickoff && !isStarted(match) && profileUser.id !== user.id) {
+          const result = db.results.find((item) => item.matchId === match.id) || null;
+          if (db.settings.hidePredictionsUntilKickoff && !isStarted(match) && !result && profileUser.id !== user.id) {
             return null;
           }
-          const result = db.results.find((item) => item.matchId === match.id) || null;
           return { match, prediction, result, points: scorePrediction(match, prediction, result) };
         })
         .filter(Boolean)

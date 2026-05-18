@@ -124,7 +124,7 @@ button { cursor: pointer; }
 
 .content {
   padding: 28px;
-  max-width: 1500px;
+  max-width: none;
   width: 100%;
 }
 
@@ -340,17 +340,189 @@ th {
 
 .bracket {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(260px, 1fr);
-  gap: 16px;
-  overflow-x: auto;
-  padding-bottom: 10px;
+  gap: 18px;
+  overflow: visible;
+  padding: 8px 0 12px;
+}
+
+.bracket-note {
+  margin-bottom: 14px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef3f0;
+  color: var(--muted);
+}
+
+.bracket-tree {
+  grid-template-columns: minmax(0, 4fr) minmax(150px, 1.15fr) minmax(0, 4fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.bracket-side {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .bracket-column {
   display: grid;
   align-content: start;
-  gap: 12px;
+  gap: 7px;
+}
+
+.bracket-column h3 {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.bracket-match {
+  width: 100%;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 3px;
+  text-align: left;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px;
+  box-shadow: 0 8px 18px rgba(28, 42, 35, 0.07);
+}
+
+.bracket-match:hover {
+  border-color: var(--brand);
+}
+
+.bracket-match.pending {
+  background: #fbfcfb;
+}
+
+.bracket-teams {
+  display: grid;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 800;
+  min-width: 0;
+}
+
+.bracket-teams .team-label {
+  gap: 4px;
+}
+
+.bracket-teams .flag,
+.bracket-teams .flag-placeholder {
+  width: 16px;
+  height: 12px;
+  flex-basis: 16px;
+}
+
+.bracket-teams .team-label span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bracket-meta {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bracket-match .badge {
+  justify-self: start;
+  padding: 2px 7px;
+  font-size: 10px;
+}
+
+.bracket-side-left .bracket-column:nth-child(2),
+.bracket-side-right .bracket-column:nth-child(3) {
+  padding-top: 24px;
+}
+
+.bracket-side-left .bracket-column:nth-child(3),
+.bracket-side-right .bracket-column:nth-child(2) {
+  padding-top: 58px;
+}
+
+.bracket-side-left .bracket-column:nth-child(4),
+.bracket-side-right .bracket-column:nth-child(1) {
+  padding-top: 112px;
+}
+
+.bracket-center {
+  display: grid;
+  gap: 10px;
+  align-content: center;
+  min-height: 520px;
+}
+
+.trophy-card, .third-place-card {
+  background: linear-gradient(180deg, #ffffff, #f5faf7);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+
+.trophy-card h3, .third-place-card h3 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.trophy-card {
+  border-color: #e4c36e;
+}
+
+.trophy {
+  width: 66px;
+  height: 66px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #fff3d8;
+  margin: 0 auto 8px;
+  color: #8a5b05;
+  font-size: 34px;
+  font-weight: 900;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(16, 27, 23, 0.55);
+}
+
+.modal {
+  width: min(520px, 100%);
+  position: relative;
+}
+
+.modal-close {
+  position: absolute;
+  top: -12px;
+  right: -12px;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #101b17;
+  color: white;
+  font-size: 22px;
+  line-height: 1;
+  z-index: 2;
+}
+
+.match-card-details {
+  max-height: min(80vh, 720px);
+  overflow: auto;
 }
 
 .admin-result {
@@ -396,4 +568,18 @@ th {
   .topbar { flex-direction: column; }
   .ranking-row { grid-template-columns: 42px 1fr; }
   .admin-result { grid-template-columns: 1fr; }
+  .bracket-tree {
+    grid-template-columns: minmax(280px, 1fr);
+  }
+  .bracket-side {
+    grid-template-columns: minmax(240px, 1fr);
+  }
+  .bracket-side-left .bracket-column,
+  .bracket-side-right .bracket-column {
+    padding-top: 0 !important;
+  }
+  .bracket-center {
+    min-height: auto;
+    order: -1;
+  }
 }
