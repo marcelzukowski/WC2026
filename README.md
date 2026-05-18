@@ -51,12 +51,62 @@ npm start
 - Panel admina do wpisywania i poprawiania wyników.
 - Awaryjna korekta typów uczestników przez administratora.
 
-## Darmowe wdrożenie online
+## Darmowe wdrożenie online bez własnej domeny
 
-Najprostsza darmowa ścieżka dla tej wersji:
+Rekomendowana ścieżka:
 
-1. Umieść projekt w repozytorium GitHub.
-2. Wdróż aplikację Node.js na darmowym hostingu obsługującym proces webowy, np. Render, Koyeb albo Fly.io, jeśli ich aktualny darmowy limit jest dostępny dla Twojego konta.
-3. Dla produkcji zamiast pliku JSON użyj darmowej bazy Postgres, np. Supabase Free, Neon Free albo podobnej usługi z aktywnym darmowym planem.
+- hosting: Vercel Free,
+- baza: Supabase Free,
+- stały link: `https://nazwa-projektu.vercel.app`.
 
-Wersja lokalna używa pliku JSON, bo dzięki temu można ją uruchomić bez instalowania bazy danych. Przy publicznym hostingu plikowy storage bywa nietrwały, dlatego produkcyjnie warto podmienić warstwę zapisu na Postgres.
+### 1. Supabase
+
+1. Załóż darmowe konto na `https://supabase.com`.
+2. Utwórz nowy projekt.
+3. Wejdź w SQL Editor.
+4. Wklej i uruchom zawartość pliku `supabase-schema.sql`.
+5. Wejdź w Project Settings -> API.
+6. Skopiuj:
+   - Project URL,
+   - `service_role` key.
+
+Klucza `service_role` nie wklejaj do frontendu ani publicznie do repozytorium.
+
+### 2. GitHub
+
+Wrzuć projekt do repozytorium GitHub.
+
+### 3. Vercel
+
+1. Załóż konto na `https://vercel.com`.
+2. Kliknij Add New -> Project.
+3. Wybierz repozytorium z aplikacją.
+4. Root Directory ustaw na `WC2026`, jeśli repozytorium zawiera folder nadrzędny.
+5. Dodaj Environment Variables:
+
+```text
+SUPABASE_URL=adres projektu z Supabase
+SUPABASE_SERVICE_ROLE_KEY=service_role key z Supabase
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=twoje_mocne_haslo
+```
+
+6. Kliknij Deploy.
+
+Po wdrożeniu aplikacja będzie dostępna pod stałym adresem Vercel, np.
+
+```text
+https://wc2026-typer.vercel.app
+```
+
+### 4. Migracja lokalnej bazy do Supabase
+
+Jeśli chcesz przenieść lokalne `data/db.json` do Supabase:
+
+```powershell
+$env:SUPABASE_URL="adres projektu z Supabase"
+$env:SUPABASE_SERVICE_ROLE_KEY="service_role key"
+npm run push-db
+```
+
+Jeśli tego nie zrobisz, aplikacja sama utworzy pusty stan przy pierwszym wejściu na wersję online.
