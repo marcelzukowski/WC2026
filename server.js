@@ -131,15 +131,12 @@ function syncSeedMatches(db) {
     db.results = [];
     changed = true;
   }
-<<<<<<< HEAD
   for (const user of db.users) {
     if (typeof user.mustChangePassword !== "boolean") {
       user.mustChangePassword = false;
       changed = true;
     }
   }
-=======
->>>>>>> a8c809ac6f19e91b75224ac1ce9b44f998e39f81
   if (!db.settings) {
     db.settings = { hidePredictionsUntilKickoff: true };
     changed = true;
