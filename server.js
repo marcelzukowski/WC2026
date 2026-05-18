@@ -12,6 +12,7 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const IS_VERCEL = Boolean(process.env.VERCEL);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -52,6 +53,9 @@ function ensureDb() {
 }
 
 async function readDb() {
+  if (IS_VERCEL && !USE_SUPABASE) {
+    throw new Error("Brakuje zmiennych SUPABASE_URL lub SUPABASE_SERVICE_ROLE_KEY w Vercel.");
+  }
   if (USE_SUPABASE) return readSupabaseDb();
   ensureDb();
   const db = JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
@@ -526,11 +530,11 @@ function cleanSessions(db) {
 }
 
 async function handleApi(req, res, pathname) {
-  const db = await readDb();
-  if (cleanSessions(db)) await writeDb(db);
-  const user = getSessionUser(req, db);
-
   try {
+    const db = await readDb();
+    if (cleanSessions(db)) await writeDb(db);
+    const user = getSessionUser(req, db);
+
     if (req.method === "POST" && pathname === "/api/register") {
       const body = await readBody(req);
       const username = String(body.username || "").trim();
