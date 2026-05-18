@@ -9,6 +9,10 @@ const DATA_DIR = path.join(__dirname, "data");
 const DB_PATH = path.join(DATA_DIR, "db.json");
 const PUBLIC_DIR = path.join(__dirname, "public");
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const USE_SUPABASE = Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
+const IS_VERCEL = Boolean(process.env.VERCEL);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -23,15 +27,12 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function ensureDb() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (fs.existsSync(DB_PATH)) return;
-
+function createInitialDb() {
   const adminUsername = process.env.ADMIN_USERNAME || "admin";
   const adminPassword = process.env.ADMIN_PASSWORD || "admin123";
   const admin = createUserRecord(adminUsername, adminPassword, "admin");
 
-  const db = {
+  return {
     users: [admin],
     sessions: [],
     matches,
@@ -43,18 +44,73 @@ function ensureDb() {
       hidePredictionsUntilKickoff: true
     }
   };
-  writeDb(db);
 }
 
-function readDb() {
+function ensureDb() {
+  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (fs.existsSync(DB_PATH)) return;
+  writeLocalDb(createInitialDb());
+}
+
+async function readDb() {
+  if (IS_VERCEL && !USE_SUPABASE) {
+    throw new Error("Brakuje zmiennych SUPABASE_URL lub SUPABASE_SERVICE_ROLE_KEY w Vercel.");
+  }
+  if (USE_SUPABASE) return readSupabaseDb();
   ensureDb();
   const db = JSON.parse(fs.readFileSync(DB_PATH, "utf8"));
-  if (syncSeedMatches(db)) writeDb(db);
+  if (syncSeedMatches(db)) await writeDb(db);
   return db;
 }
 
-function writeDb(db) {
+async function writeDb(db) {
+  if (USE_SUPABASE) return writeSupabaseDb(db);
+  writeLocalDb(db);
+}
+
+function writeLocalDb(db) {
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+}
+
+async function supabaseRequest(pathname, options = {}) {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${pathname}`, {
+    ...options,
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation",
+      ...(options.headers || {})
+    }
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Supabase error ${response.status}: ${text}`);
+  }
+  if (response.status === 204) return null;
+  return response.json();
+}
+
+async function readSupabaseDb() {
+  const rows = await supabaseRequest("app_state?id=eq.main&select=data");
+  if (rows[0]?.data) {
+    const db = rows[0].data;
+    if (syncSeedMatches(db)) await writeSupabaseDb(db);
+    return db;
+  }
+  const db = createInitialDb();
+  await supabaseRequest("app_state", {
+    method: "POST",
+    body: JSON.stringify({ id: "main", data: db })
+  });
+  return db;
+}
+
+async function writeSupabaseDb(db) {
+  await supabaseRequest("app_state?id=eq.main", {
+    method: "PATCH",
+    body: JSON.stringify({ data: db, updated_at: nowIso() })
+  });
 }
 
 function syncSeedMatches(db) {
@@ -75,12 +131,15 @@ function syncSeedMatches(db) {
     db.results = [];
     changed = true;
   }
+<<<<<<< HEAD
   for (const user of db.users) {
     if (typeof user.mustChangePassword !== "boolean") {
       user.mustChangePassword = false;
       changed = true;
     }
   }
+=======
+>>>>>>> a8c809ac6f19e91b75224ac1ce9b44f998e39f81
   if (!db.settings) {
     db.settings = { hidePredictionsUntilKickoff: true };
     changed = true;
@@ -488,11 +547,11 @@ function cleanSessions(db) {
 }
 
 async function handleApi(req, res, pathname) {
-  const db = readDb();
-  if (cleanSessions(db)) writeDb(db);
-  const user = getSessionUser(req, db);
-
   try {
+    const db = await readDb();
+    if (cleanSessions(db)) await writeDb(db);
+    const user = getSessionUser(req, db);
+
     if (req.method === "POST" && pathname === "/api/register") {
       const body = await readBody(req);
       const username = String(body.username || "").trim();
@@ -503,7 +562,7 @@ async function handleApi(req, res, pathname) {
       const nextUser = createUserRecord(username, password, "user");
       db.users.push(nextUser);
       const token = createSession(db, nextUser.id);
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 201, { user: publicUser(nextUser) }, sessionHeader(token));
     }
 
@@ -514,14 +573,14 @@ async function handleApi(req, res, pathname) {
       const found = db.users.find((item) => item.username.toLowerCase() === username.toLowerCase());
       if (!found || !verifyPassword(found, password)) return sendJson(res, 401, { error: "Nieprawidłowy login lub hasło." });
       const token = createSession(db, found.id);
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { user: publicUser(found) }, sessionHeader(token));
     }
 
     if (req.method === "POST" && pathname === "/api/logout") {
       const token = parseCookies(req).session;
       db.sessions = db.sessions.filter((session) => session.token !== token);
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { ok: true }, { "Set-Cookie": "session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0" });
     }
 
@@ -567,7 +626,7 @@ async function handleApi(req, res, pathname) {
       if (db.predictions.some((item) => item.userId === user.id && item.matchId === match.id)) return sendJson(res, 409, { error: "Ten mecz został już wytypowany." });
       const normalized = normalizePrediction(match, body);
       db.predictions.push({ userId: user.id, matchId: match.id, ...normalized, createdAt: nowIso() });
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 201, { match: decorateMatch(db, match, user), ranking: buildRanking(db) });
     }
 
@@ -580,7 +639,7 @@ async function handleApi(req, res, pathname) {
       const existing = db.results.find((item) => item.matchId === match.id);
       if (existing) Object.assign(existing, normalized, { updatedAt: nowIso() });
       else db.results.push({ matchId: match.id, ...normalized, createdAt: nowIso(), updatedAt: nowIso() });
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { match: decorateMatch(db, match, user), ranking: buildRanking(db) });
     }
 
@@ -595,7 +654,7 @@ async function handleApi(req, res, pathname) {
       const existing = db.predictions.find((item) => item.userId === targetUser.id && item.matchId === match.id);
       if (existing) Object.assign(existing, normalized, { updatedAt: nowIso(), updatedByAdmin: user.id });
       else db.predictions.push({ userId: targetUser.id, matchId: match.id, ...normalized, createdAt: nowIso(), updatedByAdmin: user.id });
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { match: decorateMatch(db, match, user), ranking: buildRanking(db) });
     }
 
@@ -631,7 +690,7 @@ async function handleApi(req, res, pathname) {
       if (!/^[A-L]$/.test(group)) return sendJson(res, 400, { error: "Nieprawidłowa grupa." });
       const order = Array.isArray(body.order) ? body.order.filter((code) => TEAM_NAMES[code]) : [];
       db.groupTieBreaks[group] = [...new Set(order)];
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { groupTieBreaks: db.groupTieBreaks });
     }
 
@@ -645,7 +704,7 @@ async function handleApi(req, res, pathname) {
       if (!match || !["home", "away"].includes(side)) return sendJson(res, 400, { error: "Nieprawidłowy slot drabinki." });
       if (!TEAM_NAMES[teamCode]) return sendJson(res, 400, { error: "Wybierz prawidłową drużynę." });
       db.knockoutSlotOverrides[`${matchId}:${side}`] = teamCode;
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { knockoutSlotOverrides: db.knockoutSlotOverrides });
     }
 
@@ -653,7 +712,7 @@ async function handleApi(req, res, pathname) {
       if (user.role !== "admin") return sendJson(res, 403, { error: "Brak uprawnień administratora." });
       const body = await readBody(req);
       db.settings.hidePredictionsUntilKickoff = Boolean(body.hidePredictionsUntilKickoff);
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { settings: db.settings });
     }
 
@@ -682,6 +741,16 @@ async function handleApi(req, res, pathname) {
   } catch (error) {
     return sendJson(res, 400, { error: error.message || "Nie udało się obsłużyć żądania." });
   }
+}
+
+function handleRequest(req, res) {
+  const host = req.headers.host || "localhost";
+  const url = new URL(req.url, `http://${host}`);
+  if (url.pathname.startsWith("/api/")) {
+    handleApi(req, res, url.pathname);
+    return;
+  }
+  serveStatic(req, res, url.pathname);
 }
 
 function createSession(db, userId) {
@@ -721,15 +790,13 @@ function serveStatic(req, res, pathname) {
   });
 }
 
-ensureDb();
+if (!USE_SUPABASE) ensureDb();
 
-http.createServer((req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  if (url.pathname.startsWith("/api/")) {
-    handleApi(req, res, url.pathname);
-    return;
-  }
-  serveStatic(req, res, url.pathname);
-}).listen(PORT, () => {
-  console.log(`WC2026 Typer działa: http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  http.createServer(handleRequest).listen(PORT, () => {
+    console.log(`WC2026 Typer działa: http://localhost:${PORT}`);
+  });
+}
+
+module.exports = handleRequest;
+module.exports.handleRequest = handleRequest;
