@@ -122,6 +122,9 @@ const VENUES = {
   99: "Miami", 100: "Kansas City", 101: "Dallas", 102: "Atlanta", 103: "Miami", 104: "New York New Jersey"
 };
 
+// Raw kickoff values come from an Eastern Time schedule.
+const SOURCE_TIME_ZONE = "America/New_York";
+
 const rawMatches = [
   [1, "2026-06-11T15:00:00+02:00", "MEX", "RSA", "A"],
   [2, "2026-06-11T22:00:00+02:00", "KOR", "CZE", "A"],
@@ -229,6 +232,30 @@ const rawMatches = [
   [104, "2026-07-19T15:00:00+02:00", "W101", "W102", "Finał"]
 ];
 
+function timeZoneOffsetMinutes(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
+  const zonedAsUtc = Date.UTC(values.year, values.month - 1, values.day, values.hour, values.minute, values.second);
+  return (zonedAsUtc - date.getTime()) / 60000;
+}
+
+function sourceKickoffToIso(kickoff) {
+  const [year, month, day, hour, minute, second] = kickoff.match(/\d+/g).slice(0, 6).map(Number);
+  const wallClockUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  let offset = timeZoneOffsetMinutes(new Date(wallClockUtc), SOURCE_TIME_ZONE);
+  offset = timeZoneOffsetMinutes(new Date(wallClockUtc - offset * 60000), SOURCE_TIME_ZONE);
+  return new Date(wallClockUtc - offset * 60000).toISOString();
+}
+
 function label(code) {
   return TEAM_NAMES[code] || code;
 }
@@ -243,7 +270,7 @@ const matches = rawMatches.map(([id, kickoff, homeCode, awayCode, groupOrRound])
   stage: id <= 72 ? "group" : "knockout",
   group: id <= 72 ? groupOrRound : null,
   round: id <= 72 ? "Faza grupowa" : groupOrRound,
-  kickoff,
+  kickoff: sourceKickoffToIso(kickoff),
   venue: VENUES[id] || "",
   homeCode,
   awayCode,
