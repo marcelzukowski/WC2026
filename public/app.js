@@ -11,7 +11,6 @@ const state = {
   groupTieBreaks: {},
   view: "home",
   group: "A",
-  sortRanking: "place",
   message: "",
   error: "",
   profile: null,
@@ -182,6 +181,7 @@ function renderHeader() {
     group: ["Faza grupowa", "Wszystkie mecze podzielone według grup."],
     knockout: ["Faza pucharowa", "Klasyczna drabinka i typowanie drużyny awansującej."],
     ranking: ["Ranking", "Pełna tabela uczestników bez konta administratora."],
+    profile: ["Profil gracza", "Typy i punkty wybranego uczestnika."],
     my: ["Moje typy", "Historia zapisanych typów i zdobytych punktów."],
     admin: ["Panel admina", "Ręczne wpisywanie i poprawianie wyników meczów."]
   };
@@ -201,6 +201,7 @@ function renderView() {
   if (state.view === "group") return renderGroup();
   if (state.view === "knockout") return renderKnockout();
   if (state.view === "ranking") return renderRanking();
+  if (state.view === "profile") return renderProfilePage();
   if (state.view === "my") return renderMyProfile();
   if (state.view === "admin") return renderAdmin();
   return renderHome();
@@ -326,18 +327,11 @@ function renderCenterMatch(id) {
 }
 
 function renderRanking() {
-  const ranking = [...state.ranking].sort(state.sortRanking === "points"
-    ? (a, b) => b.points - a.points || a.place - b.place
-    : (a, b) => a.place - b.place);
   return `
-    <div class="tabs">
-      <button data-sort="place" class="${state.sortRanking === "place" ? "active" : ""}">Sortuj wg miejsca</button>
-      <button data-sort="points" class="${state.sortRanking === "points" ? "active" : ""}">Sortuj wg punktów</button>
-    </div>
     <table>
       <thead><tr><th>Miejsce</th><th>Uczestnik</th><th>Punkty</th><th>Typy</th><th>Profil</th></tr></thead>
       <tbody>
-        ${ranking.map((item) => `
+        ${state.ranking.map((item) => `
           <tr>
             <td>${item.place}</td>
             <td>${escapeHtml(item.username)}</td>
@@ -348,7 +342,6 @@ function renderRanking() {
         `).join("")}
       </tbody>
     </table>
-    ${state.profile ? renderProfileModal() : ""}
   `;
 }
 
@@ -527,7 +520,7 @@ function renderMatchModal() {
 
 function renderMatchCard(match, options = {}) {
   const teamsKnown = match.stage === "group" || (match.homeResolved && match.awayResolved);
-  const canPredict = state.user.role !== "admin" && teamsKnown && !match.locked && !match.prediction;
+  const canSubmitPrediction = state.user.role !== "admin" && teamsKnown && !match.locked;
   const isAdmin = state.user.role === "admin";
   const locked = match.locked || state.user.role === "admin";
   const badgeText = !teamsKnown ? "Czeka na drużyny" : (isAdmin ? "Podgląd admina" : (match.locked ? "Zablokowany" : "Do typowania"));
@@ -550,19 +543,19 @@ function renderMatchCard(match, options = {}) {
       ${match.prediction ? `<div class="notice">Twój typ: ${formatScore(match.prediction)}${formatAdvance(match, match.prediction)} · Punkty: <strong>${match.points}</strong></div>` : ""}
       ${match.result ? `<div class="success">Wynik: ${formatScore(match.result)}${formatAdvance(match, match.result)}</div>` : ""}
       ${match.stats ? renderStats(match) : ""}
-      ${canPredict ? predictionForm(match) : ""}
+      ${canSubmitPrediction ? predictionForm(match, match.prediction) : ""}
     </article>
   `;
 }
 
-function predictionForm(match) {
+function predictionForm(match, prediction = null) {
   return `
     <form class="form-row" data-prediction="${match.id}">
-      <input name="homeGoals" type="number" min="0" max="30" required aria-label="Gole gospodarza">
+      <input name="homeGoals" type="number" min="0" max="30" value="${prediction?.homeGoals ?? ""}" required aria-label="Gole gospodarza">
       <span>:</span>
-      <input name="awayGoals" type="number" min="0" max="30" required aria-label="Gole gościa">
-      ${match.stage === "knockout" ? advancingSelect(match, null) : ""}
-      <button class="primary">Zapisz typ</button>
+      <input name="awayGoals" type="number" min="0" max="30" value="${prediction?.awayGoals ?? ""}" required aria-label="Gole gościa">
+      ${match.stage === "knockout" ? advancingSelect(match, prediction?.advancingTeam ?? null) : ""}
+      <button class="primary">${prediction ? "Zapisz zmiany" : "Zapisz typ"}</button>
     </form>
   `;
 }
@@ -599,15 +592,19 @@ function renderRankingCard(item) {
   `;
 }
 
-function renderProfileModal() {
+function renderProfilePage() {
+  if (!state.profile) {
+    state.view = "ranking";
+    return renderRanking();
+  }
   return `
-    <section class="panel" style="margin-top:18px">
+    <section class="panel">
       <div class="topbar">
         <div>
           <h3>${escapeHtml(state.profile.user.username)}</h3>
           <div class="muted">Miejsce ${state.profile.ranking?.place ?? "-"} · ${state.profile.ranking?.points ?? 0} pkt</div>
         </div>
-        <button class="ghost" id="close-profile">Zamknij</button>
+        <button class="ghost" id="back-ranking">Wróć do rankingu</button>
       </div>
       <div class="match-list">${state.profile.predictions.map(renderProfilePrediction).join("") || empty("Brak widocznych typów.")}</div>
     </section>
@@ -674,7 +671,7 @@ function bindCommon() {
       state.view = button.dataset.view;
       state.message = "";
       state.error = "";
-      state.profile = null;
+      if (state.view !== "profile") state.profile = null;
       renderApp();
     });
   });
@@ -688,13 +685,6 @@ function bindCommon() {
   document.querySelectorAll("[data-group]").forEach((button) => {
     button.addEventListener("click", () => {
       state.group = button.dataset.group;
-      renderApp();
-    });
-  });
-
-  document.querySelectorAll("[data-sort]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.sortRanking = button.dataset.sort;
       renderApp();
     });
   });
@@ -719,8 +709,9 @@ function bindCommon() {
     });
   });
 
-  document.querySelector("#close-profile")?.addEventListener("click", () => {
+  document.querySelector("#back-ranking")?.addEventListener("click", () => {
     state.profile = null;
+    state.view = "ranking";
     renderApp();
   });
 
@@ -923,6 +914,7 @@ async function submitThirdPlaceSlot(event) {
 async function loadProfile(userId) {
   try {
     state.profile = await api(`/api/users/${userId}/profile`);
+    state.view = "profile";
     renderApp();
   } catch (error) {
     showError(error);

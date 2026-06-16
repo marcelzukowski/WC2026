@@ -620,11 +620,15 @@ async function handleApi(req, res, pathname) {
       const match = buildResolvedMatches(db).find((item) => item.id === Number(body.matchId));
       if (!match) return sendJson(res, 404, { error: "Nie znaleziono meczu." });
       if (isLocked(match)) return sendJson(res, 409, { error: "Typowanie tego meczu jest już zablokowane." });
-      if (db.predictions.some((item) => item.userId === user.id && item.matchId === match.id)) return sendJson(res, 409, { error: "Ten mecz został już wytypowany." });
       const normalized = normalizePrediction(match, body);
-      db.predictions.push({ userId: user.id, matchId: match.id, ...normalized, createdAt: nowIso() });
+      const existing = db.predictions.find((item) => item.userId === user.id && item.matchId === match.id);
+      if (existing) {
+        Object.assign(existing, normalized, { updatedAt: nowIso() });
+      } else {
+        db.predictions.push({ userId: user.id, matchId: match.id, ...normalized, createdAt: nowIso() });
+      }
       await writeDb(db);
-      return sendJson(res, 201, { match: decorateMatch(db, match, user), ranking: buildRanking(db) });
+      return sendJson(res, existing ? 200 : 201, { match: decorateMatch(db, match, user), ranking: buildRanking(db) });
     }
 
     if (req.method === "POST" && pathname === "/api/admin/results") {
