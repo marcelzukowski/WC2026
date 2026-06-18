@@ -592,7 +592,7 @@ async function handleApi(req, res, pathname) {
       const password = String(body.password || "");
       if (password.length < 4) return sendJson(res, 400, { error: "Nowe hasło musi mieć co najmniej 4 znaki." });
       setUserPassword(user, password, false);
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { user: publicUser(user) });
     }
 
@@ -668,7 +668,7 @@ async function handleApi(req, res, pathname) {
       if (password.length < 4) return sendJson(res, 400, { error: "Hasło tymczasowe musi mieć co najmniej 4 znaki." });
       setUserPassword(targetUser, password, true);
       db.sessions = db.sessions.filter((session) => session.userId !== targetUser.id);
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { users: db.users.filter((item) => item.role !== "admin").map(publicUser) });
     }
 
@@ -680,7 +680,7 @@ async function handleApi(req, res, pathname) {
       db.users = db.users.filter((item) => item.id !== targetUser.id);
       db.sessions = db.sessions.filter((session) => session.userId !== targetUser.id);
       db.predictions = db.predictions.filter((prediction) => prediction.userId !== targetUser.id);
-      writeDb(db);
+      await writeDb(db);
       return sendJson(res, 200, { users: db.users.filter((item) => item.role !== "admin").map(publicUser), ranking: buildRanking(db) });
     }
 
