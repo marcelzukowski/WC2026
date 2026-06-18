@@ -348,7 +348,7 @@ function renderRanking() {
 function renderMyProfile() {
   const myPredictions = state.matches
     .filter((match) => match.prediction)
-    .sort(byKickoff)
+    .sort(byProfileKickoff)
     .map((match) => ({ match, prediction: match.prediction, result: match.result, points: match.points }));
   return `
     <section class="panel">
@@ -663,6 +663,16 @@ function empty(text) {
 
 function byKickoff(a, b) {
   return new Date(a.kickoff) - new Date(b.kickoff);
+}
+
+function byProfileKickoff(a, b) {
+  const now = Date.now();
+  const aTime = new Date(a.kickoff).getTime();
+  const bTime = new Date(b.kickoff).getTime();
+  const aUpcoming = aTime >= now;
+  const bUpcoming = bTime >= now;
+  if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1;
+  return aUpcoming ? aTime - bTime : bTime - aTime;
 }
 
 function bindCommon() {

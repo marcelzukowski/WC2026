@@ -537,6 +537,16 @@ function getMatchStats(db, matchId) {
   }, { total: 0, home: 0, draw: 0, away: 0 });
 }
 
+function compareProfileKickoff(a, b) {
+  const now = Date.now();
+  const aTime = new Date(a.match.kickoff).getTime();
+  const bTime = new Date(b.match.kickoff).getTime();
+  const aUpcoming = aTime >= now;
+  const bUpcoming = bTime >= now;
+  if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1;
+  return aUpcoming ? aTime - bTime : bTime - aTime;
+}
+
 function cleanSessions(db) {
   const before = db.sessions.length;
   db.sessions = db.sessions.filter((session) => new Date(session.expiresAt).getTime() > Date.now());
@@ -733,7 +743,7 @@ async function handleApi(req, res, pathname) {
           return { match, prediction, result, points: scorePrediction(match, prediction, result) };
         })
         .filter(Boolean)
-        .sort((a, b) => new Date(a.match.kickoff) - new Date(b.match.kickoff));
+        .sort(compareProfileKickoff);
       const ranking = buildRanking(db).find((item) => item.id === profileUser.id);
       return sendJson(res, 200, { user: publicUser(profileUser), ranking, predictions: profilePredictions });
     }
