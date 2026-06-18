@@ -215,7 +215,7 @@ function renderHome() {
     .sort(byKickoff);
   const recent = state.matches
     .filter((match) => new Date(match.kickoff).getTime() < now && new Date(match.kickoff).getTime() >= now - twoDays)
-    .sort(byKickoff);
+    .sort((a, b) => new Date(b.kickoff) - new Date(a.kickoff));
 
   return `
     <div class="grid two">
