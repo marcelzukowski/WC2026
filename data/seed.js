@@ -1,4 +1,4 @@
-^const TEAM_NAMES = {
+const TEAM_NAMES = {
   MEX: "Meksyk",
   RSA: "Republika Południowej Afryki",
   KOR: "Korea Południowa",
